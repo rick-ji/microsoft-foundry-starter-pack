@@ -1,0 +1,12 @@
+# Azure / Bicep
+*.azcli
+.azure/
+# OS
+.DS_Store
+Thumbs.db
+# Editor
+.vscode/
+.idea/
+# Env / secrets
+*.env
+.env
