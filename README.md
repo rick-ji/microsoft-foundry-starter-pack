@@ -8,7 +8,7 @@ A customer-ready starter pack to get going with **Microsoft Foundry** (formerly 
 
 ## 🚀 One-click deploy: Foundry account + Private Endpoint
 
-Deploys a Foundry (`AIServices`) account with **public access disabled**, a **private endpoint**, and **private DNS**. **Region** and **network selection** are variables; the VNet and DNS zones can be **new or existing**.
+Deploys a Foundry (`AIServices`) account with **public access disabled**, a **private endpoint**, **private DNS**, and a **delegated agent outbound subnet** for Foundry **Agent Service** network injection. **Region** and **network selection** are variables; the VNet and DNS zones can be **new or existing**.
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Frick-ji%2Fmicrosoft-foundry-starter-pack%2Fmain%2Finfra%2Fazuredeploy.json)
 
@@ -47,6 +47,7 @@ Details, parameters, and CLI instructions: [`infra/README.md`](./infra/README.md
 - **Residency is a deployment-type choice:** use **Data Zone / Regional** for hard EU/US boundaries; **Global** is cheapest but no processing-residency guarantee.
 - **Managed Compute** = dedicated GPUs, billed per compute-hour, for OSS/custom models.
 - **Secure by default:** the included template disables public access and uses private endpoints.
+- **Agent-ready networking:** a dedicated subnet delegated to `Microsoft.App/environments` supports network-injected Foundry Agent Service.
 
 ---
 

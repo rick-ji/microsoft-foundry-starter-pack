@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "18138957308296146174"
+      "templateHash": "6946471903094058578"
     }
   },
   "parameters": {
@@ -88,6 +88,20 @@
         "description": "Address prefix for the NEW subnet. Ignored for existing subnets."
       }
     },
+    "agentSubnetName": {
+      "type": "string",
+      "defaultValue": "foundry-agent-subnet",
+      "metadata": {
+        "description": "Name of the subnet (new or existing) delegated to the Foundry Agent Service for outbound/agent-injection traffic. Must be delegated to Microsoft.App/environments."
+      }
+    },
+    "agentSubnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.2.0/24",
+      "metadata": {
+        "description": "Address prefix for the NEW agent outbound subnet. Ignored for existing subnets. Must be at least /24."
+      }
+    },
     "privateEndpointName": {
       "type": "string",
       "defaultValue": "[format('{0}-pe', parameters('foundryAccountName'))]",
@@ -135,7 +149,8 @@
       "privatelink.services.ai.azure.com"
     ],
     "vnetId": "[if(equals(parameters('vnetNewOrExisting'), 'new'), resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), resourceId(parameters('vnetResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('vnetName')))]",
-    "subnetId": "[if(equals(parameters('vnetNewOrExisting'), 'new'), format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('subnetName')), resourceId(parameters('vnetResourceGroup'), 'Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName')))]"
+    "subnetId": "[if(equals(parameters('vnetNewOrExisting'), 'new'), format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('subnetName')), resourceId(parameters('vnetResourceGroup'), 'Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName')))]",
+    "agentSubnetId": "[if(equals(parameters('vnetNewOrExisting'), 'new'), format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName')), parameters('agentSubnetName')), resourceId(parameters('vnetResourceGroup'), 'Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('agentSubnetName')))]"
   },
   "resources": [
     {
@@ -157,6 +172,20 @@
             "properties": {
               "addressPrefix": "[parameters('subnetAddressPrefix')]",
               "privateEndpointNetworkPolicies": "Disabled"
+            }
+          },
+          {
+            "name": "[parameters('agentSubnetName')]",
+            "properties": {
+              "addressPrefix": "[parameters('agentSubnetAddressPrefix')]",
+              "delegations": [
+                {
+                  "name": "foundry-agent-delegation",
+                  "properties": {
+                    "serviceName": "Microsoft.App/environments"
+                  }
+                }
+              ]
             }
           }
         ]
@@ -293,6 +322,10 @@
     "subnetIdOut": {
       "type": "string",
       "value": "[variables('subnetId')]"
+    },
+    "agentSubnetIdOut": {
+      "type": "string",
+      "value": "[variables('agentSubnetId')]"
     }
   }
 }

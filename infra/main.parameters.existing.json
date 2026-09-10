@@ -23,6 +23,9 @@
     "subnetName": {
       "value": "pe-subnet"
     },
+    "agentSubnetName": {
+      "value": "agent-subnet"
+    },
     "privateEndpointName": {
       "value": "my-foundry-account-pe"
     },

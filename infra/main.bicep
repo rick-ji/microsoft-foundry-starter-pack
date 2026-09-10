@@ -60,6 +60,12 @@ param subnetName string = 'foundry-pe-subnet'
 @description('Address prefix for the NEW subnet. Ignored for existing subnets.')
 param subnetAddressPrefix string = '10.0.1.0/24'
 
+@description('Name of the subnet (new or existing) delegated to the Foundry Agent Service for outbound/agent-injection traffic. Must be delegated to Microsoft.App/environments.')
+param agentSubnetName string = 'foundry-agent-subnet'
+
+@description('Address prefix for the NEW agent outbound subnet. Ignored for existing subnets. Must be at least /24.')
+param agentSubnetAddressPrefix string = '10.0.2.0/24'
+
 // -----------------------------------------------------------------------------
 // Private endpoint + DNS
 // -----------------------------------------------------------------------------
@@ -99,6 +105,11 @@ var subnetId = vnetNewOrExisting == 'new'
   ? '${newVnet.id}/subnets/${subnetName}'
   : resourceId(vnetResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', vnetName, subnetName)
 
+// Delegated subnet used by the Foundry Agent Service for outbound agent-injection traffic.
+var agentSubnetId = vnetNewOrExisting == 'new'
+  ? '${newVnet.id}/subnets/${agentSubnetName}'
+  : resourceId(vnetResourceGroup, 'Microsoft.Network/virtualNetworks/subnets', vnetName, agentSubnetName)
+
 var privateDnsZoneIds = [
   for zone in privateDnsZoneNames: privateDnsZoneNewOrExisting == 'new'
     ? resourceId('Microsoft.Network/privateDnsZones', zone)
@@ -125,6 +136,21 @@ resource newVnet 'Microsoft.Network/virtualNetworks@2023-11-01' = if (vnetNewOrE
         properties: {
           addressPrefix: subnetAddressPrefix
           privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+      {
+        name: agentSubnetName
+        properties: {
+          addressPrefix: agentSubnetAddressPrefix
+          // Delegation required for Foundry Agent Service network injection (outbound agent traffic).
+          delegations: [
+            {
+              name: 'foundry-agent-delegation'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
         }
       }
     ]
@@ -243,3 +269,4 @@ output foundryEndpoint string = foundry.properties.endpoint
 output privateEndpointId string = privateEndpoint.id
 output vnetIdOut string = vnetId
 output subnetIdOut string = subnetId
+output agentSubnetIdOut string = agentSubnetId

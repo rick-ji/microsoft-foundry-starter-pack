@@ -4,6 +4,7 @@ Bicep + compiled ARM that deploys a **Microsoft Foundry (Azure AI Foundry) accou
 
 - **Public network access disabled** (`publicNetworkAccess: 'Disabled'`, `networkAcls.defaultAction: 'Deny'`)
 - A **Private Endpoint** into your VNet
+- A **delegated agent outbound subnet** (`Microsoft.App/environments`) for Foundry **Agent Service** network injection
 - **Private DNS zones** (`privatelink.cognitiveservices.azure.com`, `privatelink.openai.azure.com`, `privatelink.services.ai.azure.com`) + VNet links
 - **System-assigned managed identity**
 - **Foundry project management** enabled
@@ -69,7 +70,9 @@ az role assignment create --assignee "$ASSIGNEE" --role "Private DNS Zone Contri
 | `vnetResourceGroup` | current RG | RG of the **existing** VNet |
 | `vnetAddressPrefix` | `10.0.0.0/16` | Address space for a **new** VNet |
 | `subnetName` | `foundry-pe-subnet` | Subnet hosting the private endpoint |
-| `subnetAddressPrefix` | `10.0.1.0/24` | Prefix for a **new** subnet |
+| `subnetAddressPrefix` | `10.0.1.0/24` | Prefix for a **new** private-endpoint subnet |
+| `agentSubnetName` | `foundry-agent-subnet` | Subnet **delegated to `Microsoft.App/environments`** for Foundry Agent Service outbound traffic |
+| `agentSubnetAddressPrefix` | `10.0.2.0/24` | Prefix for a **new** agent subnet (must be **≥ /24**) |
 | `privateEndpointName` | `<account>-pe` | Private endpoint name |
 | `privateDnsZoneNewOrExisting` | `new` | **`new`** creates DNS zones; **`existing`** reuses them |
 | `privateDnsZoneResourceGroup` | current RG | RG of **existing** private DNS zones |
@@ -121,6 +124,21 @@ Two example parameter files are provided:
 az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json
 ```
 
+## Foundry Agent Service: the delegated outbound subnet
+
+Microsoft Foundry's **Agent Service** can run agents **injected into your virtual network** (a "standard"/BYO-VNet setup) so that all **outbound agent traffic** — data proxy, tool calls, and private-endpoint access to Storage, Cosmos DB, AI Search, Key Vault, etc. — originates from *your* network instead of a Microsoft-managed one.
+
+To enable this, the Agent Service (built on Azure Container Apps technology) needs a **dedicated subnet delegated to `Microsoft.App/environments`**, so it can inject its runtime/data-proxy compute into that subnet. This template creates that subnet for you:
+
+- **Separate from the private-endpoint subnet.** The `agentSubnetName` subnet carries agent *outbound* traffic; the `subnetName` subnet holds the *inbound* private endpoint. They must not be the same subnet.
+- **Delegation:** `Microsoft.App/environments` (set automatically in `main.bicep`).
+- **Size:** at least **/24** — Microsoft recommends this for agent injection, and the subnet **cannot be resized in place** later, so don't undersize it.
+- **Existing VNet:** when `vnetNewOrExisting=existing`, you must pre-create the delegated subnet yourself and pass its name via `agentSubnetName`; the template references it (output `agentSubnetIdOut`) but won't add the delegation for you.
+- **Resource providers:** register **`Microsoft.App`** and **`Microsoft.ContainerService`** in the subscription before deploying, or agent injection fails.
+- **Immutable:** subnet delegation/injection can't be moved to a different subnet without redeploying the environment.
+
+> Deploying this subnet makes the network **ready** for network-injected agents. You still associate it when you create the Agent Service **capability host / project** (portal or a follow-up template). The output `agentSubnetIdOut` gives you the exact subnet resource ID to plug in.
+
 ## Notes & prerequisites
 
 - **RBAC:** See [Prerequisites: minimum RBAC roles](#prerequisites-minimum-rbac-roles) above.
@@ -133,4 +151,7 @@ az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json
 
 - `Microsoft.CognitiveServices/accounts` template reference — <https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts>
 - Configure private link for Foundry — <https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/configure-private-link>
+- Foundry Agent Service networking (deep dive) — <https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agents-networking-deep-dive>
+- Set up private networking for Agent Service — <https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/virtual-networks>
+- Subnet delegation overview — <https://learn.microsoft.com/en-us/azure/virtual-network/subnet-delegation-overview>
 - Azure Verified Module (cognitive-services/account) — <https://github.com/Azure/bicep-registry-modules/tree/main/avm/res/cognitive-services/account>
