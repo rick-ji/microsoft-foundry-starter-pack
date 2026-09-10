@@ -10,6 +10,46 @@ Bicep + compiled ARM that deploys a **Microsoft Foundry (Azure AI Foundry) accou
 
 **Region** and **network selection** are parameters (variables). The VNet/subnet and the private DNS zones can each be **created new** or **reused (existing)**.
 
+## Prerequisites: minimum RBAC roles
+
+The template creates an AI Services account, (optionally) a VNet/subnet, a private endpoint, and (optionally) private DNS zones + links. It does **not** create role assignments. To deploy, the identity running it needs the following **built-in** roles.
+
+**Simplest (single resource group, new network + new DNS):**
+
+| Role | Scope | Why |
+|------|-------|-----|
+| **Contributor** | Target resource group | Covers account, network, private endpoint, and DNS creation. Cannot assign roles (not needed here). |
+
+**Least-privilege alternative (instead of Contributor):**
+
+| Role | Scope | Covers |
+|------|-------|--------|
+| **Cognitive Services Contributor** (`a97b65f3-24c7-4388-baec-2e87135dc908`) | Target RG | The Foundry `AIServices` account |
+| **Network Contributor** (`4d97b98b-1d4f-4787-a291-c67834d212e7`) | Target RG (+ the VNet's RG if existing) | VNet, subnet, private endpoint |
+| **Private DNS Zone Contributor** (`b12aa53e-6015-4669-85d0-8515ebb3ae7f`) | RG holding the DNS zones | Private DNS zones + VNet links + DNS zone group |
+
+**Additional scopes when using existing resources (cross-RG):**
+
+| If you set... | You also need... |
+|---------------|------------------|
+| `vnetNewOrExisting=existing` in another RG | **Network Contributor** on that VNet's resource group (to create the private endpoint / read the subnet) |
+| `privateDnsZoneNewOrExisting=existing` in another RG | **Private DNS Zone Contributor** on that DNS resource group (to create the DNS zone group binding) |
+
+**To create the resource group itself** (if it doesn't exist yet): **Contributor** at the **subscription** scope, or have an admin pre-create the RG.
+
+> Assigning roles requires **Owner** or **User Access Administrator** — needed only by whoever grants the above to the deployer, not by the deployment itself.
+
+### Assign the least-privilege set (Azure CLI)
+
+```bash
+RG=rg-foundry
+ASSIGNEE="<user-or-service-principal-object-id>"
+
+az role assignment create --assignee "$ASSIGNEE" --role "Cognitive Services Contributor" --resource-group "$RG"
+az role assignment create --assignee "$ASSIGNEE" --role "Network Contributor"             --resource-group "$RG"
+az role assignment create --assignee "$ASSIGNEE" --role "Private DNS Zone Contributor"     --resource-group "$RG"
+```
+
 ## Deploy to Azure (one click)
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Frick-ji%2Fmicrosoft-foundry-starter-pack%2Fmain%2Finfra%2Fazuredeploy.json)
@@ -83,6 +123,7 @@ az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json
 
 ## Notes & prerequisites
 
+- **RBAC:** See [Prerequisites: minimum RBAC roles](#prerequisites-minimum-rbac-roles) above.
 - Because public access is **disabled**, reach the account from **inside the VNet** (VPN/ExpressRoute/jumpbox/peered network). The portal playground needs network line-of-sight too.
 - **Existing** VNet: ensure the subnet has `privateEndpointNetworkPolicies` set to `Disabled` (the template does this only for **new** subnets).
 - **Existing** DNS zones: the template attaches them to the endpoint but does **not** create VNet links — ensure your zones are already linked to the VNet that will resolve them.
