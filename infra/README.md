@@ -56,11 +56,22 @@ az deployment group create \
      privateDnsZoneNewOrExisting=existing privateDnsZoneResourceGroup=rg-dns
 ```
 
-Or use the parameters file:
+Or use a parameters file:
 
 ```bash
+# New VNet + new DNS zones
 az deployment group create -g rg-foundry -f infra/main.bicep -p @infra/main.parameters.json
+
+# Existing (bring-your-own) VNet/subnet + existing DNS zones
+az deployment group create -g rg-foundry -f infra/main.bicep -p @infra/main.parameters.existing.json
 ```
+
+Two example parameter files are provided:
+
+| File | Scenario |
+|------|----------|
+| [`main.parameters.json`](./main.parameters.json) | Create a **new** VNet/subnet and **new** private DNS zones |
+| [`main.parameters.existing.json`](./main.parameters.existing.json) | Reuse an **existing** VNet/subnet (`rg-network`) and **existing** DNS zones (`rg-dns`) |
 
 ## Rebuild the ARM template
 
