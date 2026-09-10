@@ -137,7 +137,60 @@ To enable this, the Agent Service (built on Azure Container Apps technology) nee
 - **Resource providers:** register **`Microsoft.App`** and **`Microsoft.ContainerService`** in the subscription before deploying, or agent injection fails.
 - **Immutable:** subnet delegation/injection can't be moved to a different subnet without redeploying the environment.
 
-> Deploying this subnet makes the network **ready** for network-injected agents. You still associate it when you create the Agent Service **capability host / project** (portal or a follow-up template). The output `agentSubnetIdOut` gives you the exact subnet resource ID to plug in.
+> Deploying this subnet makes the network **ready** for network-injected agents. You still associate it when you create the Agent Service **capability host / project** — use the [`agent-standard-setup.bicep`](#agent-service-capability-host-standard-agent-setup) module below (or the portal). The output `agentSubnetIdOut` gives you the exact subnet resource ID to plug in.
+
+## Agent Service capability host (standard agent setup)
+
+[`agent-standard-setup.bicep`](./agent-standard-setup.bicep) is a **second-stage** module that layers the Foundry **Agent Service** onto the account from `main.bicep`. Run it **after** the base deployment.
+
+**What it creates:**
+
+| Resource | Role in the agent setup |
+|----------|-------------------------|
+| Foundry **project** (system-assigned identity) | Container for agents |
+| **Azure Cosmos DB** | Agent **thread storage** (`threadStorageConnections`) |
+| **Azure Storage** | Agent **file storage** (`storageConnections`) |
+| **Azure AI Search** | Agent **vector store** (`vectorStoreConnections`) |
+| Project **connections** (AAD auth) | Named links from the project to each dependency |
+| **Role assignments** | Cosmos DB Operator, Storage Blob Data Contributor, Search Index Data Contributor, Search Service Contributor — granted to the project identity |
+| **Account** capability host | Carries the **network injection** via `customerSubnet` = your agent subnet |
+| **Project** capability host | Wires the three connections into the agent runtime |
+
+**How the network injection works here:** the account-level capability host's `customerSubnet` is set to the delegated `agentSubnetId`, so all agent runtime/data-proxy compute is injected into your `foundry-agent-subnet` and outbound traffic originates from your VNet.
+
+**Deploy:**
+
+```bash
+# 1) Get the agent subnet ID from the base deployment output
+AGENT_SUBNET_ID=$(az deployment group show -g rg-foundry -n main --query properties.outputs.agentSubnetIdOut.value -o tsv)
+
+# 2) Deploy the standard agent setup
+az deployment group create \
+  -g rg-foundry \
+  -f infra/agent-standard-setup.bicep \
+  -p accountName=my-foundry-account agentSubnetId="$AGENT_SUBNET_ID" projectName=agent-project
+```
+
+Or with the example parameters file (edit `agentSubnetId` first):
+
+```bash
+az deployment group create -g rg-foundry -f infra/agent-standard-setup.bicep -p @infra/agent-standard-setup.parameters.json
+```
+
+**Key parameters:** `accountName` (existing), `agentSubnetId` (required), `projectName`, `cosmosDbName` / `storageAccountName` / `aiSearchName` (auto-named), `dependencyPublicNetworkAccess` (`Enabled` default; see below).
+
+**Important notes:**
+- **Preview APIs:** capability hosts + `networkInjections` use `2025-04-01-preview`. The Bicep type defs are stale, so `capabilityHostKind` / `customerSubnet` are set with `#disable-next-line BCP037` — this is expected and matches the official sample.
+- **One capability host per account:** if the account already has one (e.g., it was created with `networkInjections.scenario='agent'`, which auto-creates it), this module's account-level host will conflict — remove/skip it in that case.
+- **Additional RBAC to deploy this module:** the deployer also needs to **create role assignments**, i.e. **Owner** or **User Access Administrator** on the dependency scopes (on top of the roles in the base table).
+- **Full private isolation:** `dependencyPublicNetworkAccess='Enabled'` is the turnkey default so the deployment succeeds without extra plumbing. For production **network isolation**, set it to `Disabled` **and add private endpoints + private DNS** for Cosmos (`privatelink.documents.azure.com`), Blob (`privatelink.blob.core.windows.net`), and Search (`privatelink.search.windows.net`) — see the official sample linked below.
+- **Data-plane container roles:** the fully-secured official sample applies a *second pass* of container-scoped Cosmos/Blob data-plane role assignments **after** the capability host provisions its containers. This starter module applies the account-scoped roles needed to create the host; add the container-scoped pass if your agents fail on thread/file access.
+
+**Regenerate the compiled ARM** after editing:
+
+```bash
+az bicep build --file infra/agent-standard-setup.bicep --outfile infra/agent-standard-setup.json
+```
 
 ## Notes & prerequisites
 
@@ -154,4 +207,6 @@ To enable this, the Agent Service (built on Azure Container Apps technology) nee
 - Foundry Agent Service networking (deep dive) — <https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/agents-networking-deep-dive>
 - Set up private networking for Agent Service — <https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/virtual-networks>
 - Subnet delegation overview — <https://learn.microsoft.com/en-us/azure/virtual-network/subnet-delegation-overview>
+- Official standard-agent (network-secured) sample — <https://github.com/microsoft-foundry/foundry-samples/tree/main/infrastructure/infrastructure-setup-bicep/15-private-network-standard-agent-setup>
+- capabilityHosts template reference — <https://learn.microsoft.com/en-us/azure/templates/microsoft.cognitiveservices/accounts/capabilityhosts>
 - Azure Verified Module (cognitive-services/account) — <https://github.com/Azure/bicep-registry-modules/tree/main/avm/res/cognitive-services/account>

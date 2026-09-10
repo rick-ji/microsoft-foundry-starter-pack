@@ -1,0 +1,383 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "12746078410262962262"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Region for all resources. Defaults to the resource group location."
+      }
+    },
+    "accountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the EXISTING Foundry (AIServices) account created by main.bicep."
+      }
+    },
+    "agentSubnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "ARM resource ID of the delegated agent subnet (Microsoft.App/environments) — main.bicep output \"agentSubnetIdOut\"."
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "agent-project",
+      "maxLength": 32,
+      "metadata": {
+        "description": "Name of the Foundry project to create under the account."
+      }
+    },
+    "projectDescription": {
+      "type": "string",
+      "defaultValue": "Foundry standard agent setup project.",
+      "metadata": {
+        "description": "Project description."
+      }
+    },
+    "projectDisplayName": {
+      "type": "string",
+      "defaultValue": "Agent Project",
+      "metadata": {
+        "description": "Project display name."
+      }
+    },
+    "cosmosDbName": {
+      "type": "string",
+      "defaultValue": "[toLower(format('cos{0}', uniqueString(resourceGroup().id, parameters('accountName'))))]",
+      "metadata": {
+        "description": "Name of the Cosmos DB account (agent thread storage)."
+      }
+    },
+    "storageAccountName": {
+      "type": "string",
+      "defaultValue": "[toLower(format('st{0}', uniqueString(resourceGroup().id, parameters('accountName'))))]",
+      "maxLength": 24,
+      "metadata": {
+        "description": "Name of the Storage account (agent file storage). 3-24 lowercase alphanumerics."
+      }
+    },
+    "aiSearchName": {
+      "type": "string",
+      "defaultValue": "[toLower(format('srch{0}', uniqueString(resourceGroup().id, parameters('accountName'))))]",
+      "metadata": {
+        "description": "Name of the Azure AI Search service (agent vector store)."
+      }
+    },
+    "dependencyPublicNetworkAccess": {
+      "type": "string",
+      "defaultValue": "Enabled",
+      "allowedValues": [
+        "Enabled",
+        "Disabled"
+      ],
+      "metadata": {
+        "description": "Public network access for the created dependencies. Use \"Disabled\" only if you also add private endpoints for each dependency (see README)."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Optional resource tags."
+      }
+    }
+  },
+  "variables": {
+    "accountCapHostName": "[format('{0}@aml_aiagentservice', parameters('accountName'))]",
+    "projectCapHostName": "[format('{0}@aml_aiagentservice', parameters('projectName'))]",
+    "cosmosDbOperatorRoleId": "230815da-be43-4aae-9cb4-875f7bd000aa",
+    "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
+    "searchIndexDataContributorRoleId": "8ebe5a00-799e-43f5-93ac-243d3dce84a7",
+    "searchServiceContributorRoleId": "7ca78c08-252a-4471-8644-bb5ff32d4ba0"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects/connections",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('projectName'), parameters('cosmosDbName'))]",
+      "properties": {
+        "category": "CosmosDB",
+        "target": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName')), '2024-11-15').documentEndpoint]",
+        "authType": "AAD",
+        "metadata": {
+          "ApiType": "Azure",
+          "ResourceId": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))]",
+          "location": "[reference(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName')), '2024-11-15', 'full').location]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects/connections",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('projectName'), parameters('storageAccountName'))]",
+      "properties": {
+        "category": "AzureStorageAccount",
+        "target": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01').primaryEndpoints.blob]",
+        "authType": "AAD",
+        "metadata": {
+          "ApiType": "Azure",
+          "ResourceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+          "location": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), '2023-05-01', 'full').location]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects/connections",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('projectName'), parameters('aiSearchName'))]",
+      "properties": {
+        "category": "CognitiveSearch",
+        "target": "[format('https://{0}.search.windows.net', parameters('aiSearchName'))]",
+        "authType": "AAD",
+        "metadata": {
+          "ApiType": "Azure",
+          "ResourceId": "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+          "location": "[reference(resourceId('Microsoft.Search/searchServices', parameters('aiSearchName')), '2024-06-01-preview', 'full').location]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2024-11-15",
+      "name": "[parameters('cosmosDbName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "kind": "GlobalDocumentDB",
+      "properties": {
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "disableLocalAuth": true,
+        "enableAutomaticFailover": false,
+        "enableMultipleWriteLocations": false,
+        "publicNetworkAccess": "[parameters('dependencyPublicNetworkAccess')]",
+        "enableFreeTier": false,
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ],
+        "databaseAccountOfferType": "Standard"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[parameters('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": false,
+        "publicNetworkAccess": "[parameters('dependencyPublicNetworkAccess')]",
+        "networkAcls": {
+          "bypass": "AzureServices",
+          "defaultAction": "[if(equals(parameters('dependencyPublicNetworkAccess'), 'Disabled'), 'Deny', 'Allow')]",
+          "virtualNetworkRules": []
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Search/searchServices",
+      "apiVersion": "2024-06-01-preview",
+      "name": "[parameters('aiSearchName')]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "sku": {
+        "name": "standard"
+      },
+      "properties": {
+        "disableLocalAuth": false,
+        "authOptions": {
+          "aadOrApiKey": {
+            "aadAuthFailureMode": "http401WithBearerChallenge"
+          }
+        },
+        "hostingMode": "default",
+        "partitionCount": 1,
+        "replicaCount": 1,
+        "semanticSearch": "disabled",
+        "publicNetworkAccess": "[toLower(parameters('dependencyPublicNetworkAccess'))]",
+        "networkRuleSet": {
+          "bypass": "None",
+          "ipRules": []
+        }
+      }
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}', parameters('accountName'), parameters('projectName'))]",
+      "location": "[parameters('location')]",
+      "tags": "[parameters('tags')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "description": "[parameters('projectDescription')]",
+        "displayName": "[parameters('projectDisplayName')]"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('cosmosDbOperatorRoleId'), resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName')))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), '2025-04-01-preview', 'full').identity.principalId]",
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('cosmosDbOperatorRoleId'))]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('storageBlobDataContributorRoleId'), resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), '2025-04-01-preview', 'full').identity.principalId]",
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('searchIndexDataContributorRoleId'), resourceId('Microsoft.Search/searchServices', parameters('aiSearchName')))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), '2025-04-01-preview', 'full').identity.principalId]",
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('searchIndexDataContributorRoleId'))]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('searchServiceContributorRoleId'), resourceId('Microsoft.Search/searchServices', parameters('aiSearchName')))]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), '2025-04-01-preview', 'full').identity.principalId]",
+        "roleDefinitionId": "[resourceId('Microsoft.Authorization/roleDefinitions', variables('searchServiceContributorRoleId'))]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/capabilityHosts",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}', parameters('accountName'), variables('accountCapHostName'))]",
+      "properties": {
+        "capabilityHostKind": "Agents",
+        "customerSubnet": "[parameters('agentSubnetId')]"
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('cosmosDbOperatorRoleId'), resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))))]",
+        "[extensionResourceId(resourceId('Microsoft.Search/searchServices', parameters('aiSearchName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('searchIndexDataContributorRoleId'), resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))))]",
+        "[extensionResourceId(resourceId('Microsoft.Search/searchServices', parameters('aiSearchName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('searchServiceContributorRoleId'), resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))))]",
+        "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), variables('storageBlobDataContributorRoleId'), resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/projects/capabilityHosts",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('projectName'), variables('projectCapHostName'))]",
+      "properties": {
+        "capabilityHostKind": "Agents",
+        "threadStorageConnections": [
+          "[parameters('cosmosDbName')]"
+        ],
+        "storageConnections": [
+          "[parameters('storageAccountName')]"
+        ],
+        "vectorStoreConnections": [
+          "[parameters('aiSearchName')]"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/capabilityHosts', parameters('accountName'), variables('accountCapHostName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "projectName": {
+      "type": "string",
+      "value": "[parameters('projectName')]"
+    },
+    "projectId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName'))]"
+    },
+    "projectPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', parameters('accountName'), parameters('projectName')), '2025-04-01-preview', 'full').identity.principalId]"
+    },
+    "cosmosDbId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('cosmosDbName'))]"
+    },
+    "storageAccountId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]"
+    },
+    "aiSearchId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Search/searchServices', parameters('aiSearchName'))]"
+    },
+    "accountCapabilityHostName": {
+      "type": "string",
+      "value": "[variables('accountCapHostName')]"
+    },
+    "projectCapabilityHostName": {
+      "type": "string",
+      "value": "[variables('projectCapHostName')]"
+    }
+  }
+}

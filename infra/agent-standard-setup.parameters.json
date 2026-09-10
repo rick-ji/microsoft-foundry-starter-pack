@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "accountName": {
+      "value": "my-foundry-account"
+    },
+    "agentSubnetId": {
+      "value": "/subscriptions/<sub-id>/resourceGroups/rg-foundry/providers/Microsoft.Network/virtualNetworks/foundry-vnet/subnets/foundry-agent-subnet"
+    },
+    "projectName": {
+      "value": "agent-project"
+    },
+    "projectDisplayName": {
+      "value": "Agent Project"
+    },
+    "dependencyPublicNetworkAccess": {
+      "value": "Enabled"
+    },
+    "tags": {
+      "value": {
+        "workload": "microsoft-foundry-starter-pack",
+        "component": "agent-service"
+      }
+    }
+  }
+}

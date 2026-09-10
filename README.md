@@ -14,6 +14,8 @@ Deploys a Foundry (`AIServices`) account with **public access disabled**, a **pr
 
 Details, parameters, and CLI instructions: [`infra/README.md`](./infra/README.md).
 
+**Two-stage deploy:** `main.bicep` provisions the account + private network (incl. the delegated agent subnet); the optional [`agent-standard-setup.bicep`](./infra/README.md#agent-service-capability-host-standard-agent-setup) then adds the **Agent Service** — a project, Cosmos/Storage/Search dependencies, connections, role assignments, and the capability hosts that bind the agent runtime to your subnet.
+
 ---
 
 ## 📚 Documentation
